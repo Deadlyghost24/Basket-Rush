@@ -1,86 +1,156 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+// src/CartContext.jsx
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import axios from 'axios';
 
 const CartContext = createContext();
 
-export const CartProvider = ({ children }) => {
-    const [cart, setCart] = useState(() => {
-        try {
-            const savedCart = localStorage.getItem('cart')
-            return savedCart ? JSON.parse(savedCart) : []
-        }
-        catch {
-            return []
-        }
+const getAuthHeader = () => {
+  // Pull your JWT from wherever you’ve stored it
+  const token =
+    localStorage.getItem('authToken') ||
+    localStorage.getItem('token') ||
+    sessionStorage.getItem('token');
+
+  // Always send it explicitly, even if withCredentials is true
+  return token
+    ? { headers: { Authorization: `Bearer ${token}` } }
+    : {};
+};
+
+const normalizeItems = (rawItems = []) => {
+  return rawItems
+    .map(item => {
+      const id = item._id || item.productId || item.product?._id;
+      const productId = item.productId || item.product?._id;
+      const name = item.product?.name || item.name || 'Unnamed';
+      const price = item.price ?? item.product?.price ?? 0;
+      const imageUrl = item.product?.imageUrl || item.imageUrl || '';
+
+      return {
+        ...item,
+        id, // unique line item ID
+        productId, // underlying product ID (used for addToCart)
+        name,
+        price,
+        imageUrl,
+        quantity: item.quantity || 0,
+      };
     })
-    // IT WILL SAVE THE CART IN LOCALSTORAGE WITH ITEM ID ELSE IT WILL BE EMPTY ARRAY
+    .filter(item => item.id != null);
+};
 
-    // SYNC CART TO LOCALSTOARAGE WHENEVER IT CHAGES
-    useEffect(() => {
-        localStorage.setItem('cart', JSON.stringify(cart))
-    }, [cart]);
+export const CartProvider = ({ children }) => {
+  const [cart, setCart] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-    // ADD AN ITEM TO CART OR INCREASE 
-    const addToCart = (item, quantity = 1) => {
-        setCart(prevCart => {
-            const existingItem = prevCart.find(ci => ci.id === item.id)
-            if (existingItem) {
-                return prevCart.map(ci =>
-                    ci.id === item.id
-                        ? { ...ci, quantity: ci.quantity + quantity } : ci
-                )
-            }
+  useEffect(() => {
+    fetchCart();
+  }, []);
 
-            else {
-                return [...prevCart, { ...item, quantity }]
-            }
-        })
+  const fetchCart = async () => {
+    try {
+      const { data } = await axios.get(
+        'http://localhost:4000/api/cart',
+        {
+          ...getAuthHeader(),
+          withCredentials: true,   // if you’re relying on cookies too
+        }
+      );
+      const rawItems = Array.isArray(data)
+        ? data
+        : Array.isArray(data.items)
+          ? data.items
+          : data.cart?.items || [];
+
+      setCart(normalizeItems(rawItems));
+    } catch (err) {
+      console.error('Error fetching cart:', err);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // REMVE ITEM FROM CART
-    const removeFromCart = itemId => {
-        setCart(prevCart => prevCart.filter(ci => ci.id !== itemId))
+  const refreshCart = async () => {
+    try {
+      const { data } = await axios.get('http://localhost:4000/api/cart', getAuthHeader());
+      const rawItems = Array.isArray(data)
+        ? data
+        : Array.isArray(data.items)
+          ? data.items
+          : data.cart?.items || [];
+      setCart(normalizeItems(rawItems));
+    } catch (err) {
+      console.error('Error refreshing cart:', err);
     }
+  };
 
-    // UPDATE ITEM QUNATITY
-    const updateQuantity = (itemId, newQuantity) => {
-        if (newQuantity < 1) return;
-        setCart(prevCart =>
-            prevCart.map(ci =>
-                ci.id === itemId ? { ...ci, quantity: newQuantity } : ci))
+  const addToCart = async (productId, quantity = 1) => {
+    try {
+      await axios.post(
+        'http://localhost:4000/api/cart',
+        { productId, quantity },
+        getAuthHeader()
+      );
+      await refreshCart();
+    } catch (err) {
+      console.error('Error adding to cart:', err);
     }
+  };
 
-    // CLEAR CART
-    const clearCart = () => {
-        setCart([])
+  const updateQuantity = async (lineId, quantity) => {
+    try {
+      await axios.put(
+        `http://localhost:4000/api/cart/${lineId}`,
+        { quantity },
+        getAuthHeader()
+      );
+      await refreshCart();
+    } catch (err) {
+      console.error('Error updating quantity:', err);
     }
+  };
 
-    // CALCULATE TOTAL COST
-    const getCartTotal = () => cart.reduce((total, ci) => total + ci.price * ci.quantity, 0)
+  const removeFromCart = async (lineId) => {
+    try {
+      await axios.delete(`http://localhost:4000/api/cart/${lineId}`, getAuthHeader());
+      await refreshCart();
+    } catch (err) {
+      console.error('Error removing from cart:', err);
+    }
+  };
 
-    // CALCULATE TOTAL NUMBER OF ITEMS IN CART
-    const cartCount = cart.reduce((count, ci) => count + ci.quantity, 0)
+  const clearCart = async () => {
+    try {
+      await axios.post('http://localhost:4000/api/cart/clear', {}, getAuthHeader());
+      setCart([]);
+    } catch (err) {
+      console.error('Error clearing cart:', err);
+    }
+  };
 
+  const getCartTotal = () => cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-    return (
-        <CartContext.Provider value={{
-            cart,
-            cartCount,
-            addToCart,
-            removeFromCart,
-            updateQuantity,
-            clearCart,
-            getCartTotal
-        }}>
-            {children}
-        </CartContext.Provider>
-    )
-}
+  return (
+    <CartContext.Provider
+      value={{
+        cart,
+        loading,
+        cartCount,
+        addToCart,
+        updateQuantity,
+        removeFromCart,
+        clearCart,
+        getCartTotal,
+      }}
+    >
+      {children}
+    </CartContext.Provider>
+  );
+};
 
-// CUSTOM HOOK FOR CART CONTEXT
 export const useCart = () => {
-    const context = useContext(CartContext)
-    if (!context) {
-        throw new Error('USECART MUST BE USED WITHIN A CARTPROVIDER')
-    }
-    return context;
-}
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error('useCart must be inside CartProvider');
+  return ctx;
+};
