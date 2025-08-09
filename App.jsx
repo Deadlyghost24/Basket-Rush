@@ -1,78 +1,35 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
-import { CartProvider } from './CartContext';
-import Navbar from './components/Navbar';
-import Home from './page/Home';
-import Contact from './page/Contact';
-import Items from './page/Items';
-import Cart from './page/Cart';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import Logout from './components/Logout';
-import CheckoutPage from './components/Checkout'
-import MyOrders from './components/OrderPage'
-import VerifyPaymentPage from './page/VerifyPaymentPage';
+// src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import AdminNavbar from './components/AdminNavbar';
+import AddItemPage from './components/AddItem';
+import ListItemsPage from './components/ListItems';
+import OrdersPage from './components/Orders';
 
-// ScrollToTop component: listens to route changes and scrolls window to top
-const ScrollToTop = () => {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
-  return null;
-};
-
-const App = () => {
-  // Track auth state here
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    Boolean(localStorage.getItem('authToken'))
-  );
-
-  // Whenever we dispatch the custom event, update this flag
-  useEffect(() => {
-    const handler = () => {
-      setIsAuthenticated(Boolean(localStorage.getItem('authToken')));
-    };
-    window.addEventListener('authStateChanged', handler);
-    return () => window.removeEventListener('authStateChanged', handler);
-  }, []);
-
+function App() {
   return (
-    <CartProvider>
-      <ScrollToTop />
-      <Navbar isAuthenticated={isAuthenticated} />
-
-      <Routes>
-        {/* Public pages */}
-        <Route path="/" element={<Home />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/items" element={<Items />} />
-
-        {/* Protected Cart: only /cart checks auth */}
-        <Route
-          path="/cart"
-          element={
-            isAuthenticated ? <Cart /> : <Navigate replace to="/login" />
-          }
-        />
-        <Route path="/checkout" element={<CheckoutPage />} />
-
-        {/* Payment verification */}
-        <Route path="/myorders/verify" element={<VerifyPaymentPage />} />
-        <Route path="/myorders" element={<MyOrders />} />
-
-        {/* Auth routes (always available) */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-
-        {/* Logout page (if you still want a dedicated route) */}
-        <Route path="/logout" element={<Logout />} />
-
-        {/* Fallback: redirect to home */}
-        <Route path="*" element={<Navigate replace to="/" />} />
-      </Routes>
-    </CartProvider>
+    
+      <div className="min-h-screen flex flex-col">
+        <AdminNavbar />
+        <main className="flex-grow bg-slate-50">
+          <Routes>
+            <Route path="/admin/add-item" element={<AddItemPage />} />
+            <Route path="/admin/list-items" element={<ListItemsPage />} />
+            <Route path="/admin/orders" element={<OrdersPage />} />
+            {/* Redirect to add-item as default */}
+            <Route path="*" element={<AddItemPage />} />
+          </Routes>
+        </main>
+        
+        {/* Footer */}
+        <footer className="bg-emerald-800 text-white py-4">
+          <div className="max-w-6xl mx-auto px-4 text-center text-sm">
+            <p>© {new Date().getFullYear()} Rush Basket Admin Panel. All rights reserved.</p>
+          </div>
+        </footer>
+      </div>
+    
   );
-};
+}
 
 export default App;
